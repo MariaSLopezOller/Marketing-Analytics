@@ -1,0 +1,49 @@
+# E-commerce Funnel Analysis using GA4 data in BigQuery
+
+-- This query analyzes user progression through a typical e-commerce funnel:
+
+-- View Item > Add to Cart > Begin Checkout > Purchase
+
+```
+WITH funnel_stages AS (
+  SELECT
+    user_pseudo_id,
+    event_timestamp,
+    CASE
+      WHEN event_name = 'view_item' THEN 1
+      WHEN event_name = 'add_to_cart' THEN 2
+      WHEN event_name = 'begin_checkout' THEN 3
+      WHEN event_name = 'purchase' THEN 4
+    END AS stage
+  FROM
+    `your_project_id.your_dataset_id.events_*`
+  WHERE
+    _TABLE_SUFFIX BETWEEN '20240101' AND '20240131'
+    AND event_name IN ('view_item', 'add_to_cart', 'begin_checkout', 'purchase')
+),
+
+user_journey AS (
+  SELECT
+    user_pseudo_id,
+    MAX(CASE WHEN stage = 1 THEN 1 ELSE 0 END) AS reached_view_item,
+    MAX(CASE WHEN stage = 2 THEN 1 ELSE 0 END) AS reached_add_to_cart,
+    MAX(CASE WHEN stage = 3 THEN 1 ELSE 0 END) AS reached_begin_checkout,
+    MAX(CASE WHEN stage = 4 THEN 1 ELSE 0 END) AS reached_purchase
+  FROM
+    funnel_stages
+  GROUP BY
+    user_pseudo_id
+)
+
+SELECT
+  COUNT(DISTINCT user_pseudo_id) AS total_users,
+  SUM(reached_view_item) AS view_item_count,
+  SUM(reached_add_to_cart) AS add_to_cart_count,
+  SUM(reached_begin_checkout) AS begin_checkout_count,
+  SUM(reached_purchase) AS purchase_count,
+  ROUND(SUM(reached_add_to_cart) / SUM(reached_view_item) * 100, 2) AS view_to_cart_rate,
+  ROUND(SUM(reached_begin_checkout) / SUM(reached_add_to_cart) * 100, 2) AS cart_to_checkout_rate,
+  ROUND(SUM(reached_purchase) / SUM(reached_begin_checkout) * 100, 2) AS checkout_to_purchase_rate,
+  ROUND(SUM(reached_purchase) / SUM(reached_view_item) * 100, 2) AS overall_conversion_rate
+FROM
+  user_journey
